@@ -287,6 +287,48 @@ var data = {
     sextillion: 1e21,
     septillion: 1e24,
     grand: 1000
+  },
+  fractions: {
+    a: 1,
+    first: 1 / 1,
+    second: 1 / 2,
+    half: 1 / 2,
+    quarter: 1 / 4,
+    third: 1 / 3,
+    fourth: 1 / 4,
+    fifth: 1 / 5,
+    sixth: 1 / 6,
+    seventh: 1 / 7,
+    eighth: 1 / 8,
+    ninth: 1 / 9,
+    tenth: 1 / 10,
+    eleventh: 1 / 11,
+    twelfth: 1 / 12,
+    thirteenth: 1 / 13,
+    fourteenth: 1 / 14,
+    fifteenth: 1 / 15,
+    sixteenth: 1 / 16,
+    seventeenth: 1 / 17,
+    eighteenth: 1 / 18,
+    nineteenth: 1 / 19,
+    twentieth: 1 / 20,
+    thirtieth: 1 / 30,
+    fortieth: 1 / 40,
+    fourtieth: 1 / 40,
+    fiftieth: 1 / 50,
+    sixtieth: 1 / 60,
+    seventieth: 1 / 70,
+    eightieth: 1 / 80,
+    ninetieth: 1 / 90,
+    hundredth: 1 / 100,
+    thousandth: 1 / 1000,
+    millionth: 1 / 1e6,
+    billionth: 1 / 1e9,
+    trillionth: 1 / 1e12,
+    quadrillionth: 1 / 1e15,
+    quintillionth: 1 / 1e18,
+    sextillionth: 1 / 1e21,
+    septillionth: 1 / 1e24
   }
 };
 
@@ -354,6 +396,36 @@ var parseNumeric = function parseNumeric(str) {
 
 var parseNumeric_1 = parseNumeric;
 
+var parseFractions = function parseFractions(arr) {
+  // console.log('parsing fraction:')
+  // console.log(arr)
+  var multiplier = 1;
+
+  for (var i = 0; i < arr.length; i++) {
+    var w = arr[i];
+
+    if (data.fractions.hasOwnProperty(w) === true) {
+      multiplier *= data.fractions[w];
+    } else if (data.fractions.hasOwnProperty(w.slice(0, -1)) === true) {
+      multiplier *= data.fractions[w.slice(0, -1)];
+    } else if (data.ones.hasOwnProperty(w) === true) {
+      multiplier *= data.ones[w];
+    } else if (data.teens.hasOwnProperty(w) === true) {
+      multiplier *= data.teens[w];
+    } else if (data.tens.hasOwnProperty(w) === true) {
+      multiplier *= data.tens[w];
+    } else if (/^[0-9]$/.test(w) === true) {
+      multiplier *= w;
+    } else {
+      return 0;
+    }
+  }
+
+  return multiplier;
+};
+
+var parseFractions_1 = parseFractions;
+
 var improperFraction = /^([0-9,\. ]+)\/([0-9,\. ]+)$/; //some numbers we know
 
 var casualForms = {
@@ -362,8 +434,13 @@ var casualForms = {
   'a dozen': 12,
   'two dozen': 24,
   zero: 0
+};
+
+var isFractional = function isFractional(term) {
+  return term !== 'a' && (!!data.fractions[term] || !!data.fractions[term.slice(0, -1)]);
 }; // a 'section' is something like 'fifty-nine thousand'
 // turn a section into something we can add to - like 59000
+
 
 var section_sum = function section_sum(obj) {
   return Object.keys(obj).reduce(function (sum, k) {
@@ -373,7 +450,8 @@ var section_sum = function section_sum(obj) {
 }; //turn a string into a number
 
 
-var parse = function parse(str) {
+var parse = function parse(str, isFraction) {
+
   //convert some known-numbers
   if (casualForms.hasOwnProperty(str) === true) {
     return casualForms[str];
@@ -390,7 +468,7 @@ var parse = function parse(str) {
   var has = {};
   var sum = 0;
   var isNegative = false;
-  var terms = str.split(/[ -]/);
+  var terms = str.split(/[ -]/); // const isFraction = findFraction(terms)
 
   for (var i = 0; i < terms.length; i++) {
     var w = terms[i];
@@ -430,11 +508,31 @@ var parse = function parse(str) {
       }
 
       continue;
-    } //prevent mismatched units, like 'seven eleven'
+    }
+
+    if (isFraction && terms.length === 1 && isFractional(w)) {
+      return parseFractions_1([terms[terms.length - 1]]);
+    } //prevent mismatched units, like 'seven eleven' if not a fraction
 
 
-    if (validate(w, has) === false) {
-      return null;
+    if (validate(w, has) === false || isFraction && isFractional(w) && terms.length > 1) {
+      if (isFraction) {
+        sum += section_sum(has);
+        var fractional = parse(terms.slice(i).join(' '), isFraction);
+        var prev = parse(terms[i - 1]);
+
+        if (sum === 0 || terms[i - 1] === 'and' || terms[i - 2] === 'and' && terms[i - 1] === 'a') {
+          sum += fractional;
+        } else if (prev > 19 && prev < 100) {
+          sum = (1 / (sum + 1 / fractional)).toPrecision(4);
+        } else {
+          sum *= fractional;
+        }
+
+        return sum;
+      } else {
+        return null;
+      }
     } //buildOut section, collect 'has' values
 
 
@@ -448,9 +546,19 @@ var parse = function parse(str) {
       has['tens'] = data.tens[w];
     } else if (data.multiples.hasOwnProperty(w) === true) {
       var mult = data.multiples[w]; //something has gone wrong : 'two hundred five hundred'
+      //possibly because it's a fraction
 
       if (mult === last_mult) {
-        return null;
+        if (isFraction) {
+          has = {};
+
+          var _fractional = parse(terms.slice(i - 1).join(' '), isFraction);
+
+          sum += _fractional;
+          return sum;
+        } else {
+          return null;
+        }
       } //support 'hundred thousand'
       //this one is tricky..
 
@@ -497,7 +605,7 @@ var parse = function parse(str) {
 
 var toNumber = parse;
 
-var parseNumeric$1 = function parseNumeric(str, p) {
+var parseNumeric$1 = function parseNumeric(str, p, isFraction) {
   str = str.replace(/,/g, ''); //parse a numeric-number (easy)
 
   var arr = str.split(/^([^0-9]*)([0-9.,]*)([^0-9]*)$/);
@@ -529,7 +637,7 @@ var parseNumeric$1 = function parseNumeric(str, p) {
 
     return {
       prefix: arr[1] || '',
-      num: num,
+      num: isFraction ? 1 / num : num,
       suffix: suffix
     };
   }
@@ -539,11 +647,12 @@ var parseNumeric$1 = function parseNumeric(str, p) {
 
 
 var parseNumber = function parseNumber(p) {
+  var isFraction = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : false;
   var str = p.text('reduced'); // is it in '3,123' format?
 
   var hasComma = /[0-9],[0-9]/.test(p.text('text')); // parse a numeric-number like '$4.00'
 
-  var res = parseNumeric$1(str, p);
+  var res = parseNumeric$1(str, p, isFraction);
 
   if (res !== null) {
     res.hasComma = hasComma;
@@ -551,7 +660,7 @@ var parseNumber = function parseNumber(p) {
   } //parse a text-numer (harder)
 
 
-  var num = toNumber(str);
+  var num = toNumber(str, isFraction);
   return {
     hasComma: hasComma,
     prefix: '',
@@ -2023,7 +2132,7 @@ var textForm1 = function textForm1(m) {
 
 
 var textForm2 = function textForm2(m) {
-  var found = m.match('[<num>(#Cardinal|a)+] [<den>#Ordinal+]');
+  var found = m.match('[<num>(#Cardinal|a)+] [<den>#Fraction+]');
 
   if (found.found !== true) {
     return null;
@@ -2072,6 +2181,21 @@ var parseFraction = function parseFraction(m) {
 var parse$3 = parseFraction;
 
 var methods$2 = {
+  toNumber: function toNumber() {
+    this.forEach(function (val) {
+      var obj = parse$1(val, val.has('#Fraction'));
+
+      if (obj.num === null) {
+        return;
+      }
+
+      var str = makeNumber_1(obj, false);
+      val.replaceWith(str, true);
+      val.tag('NumericValue');
+    });
+    return this;
+  },
+
   /** overloaded json method with additional number information */
   json: function json(options) {
     var n = null;
@@ -2091,8 +2215,12 @@ var methods$2 = {
     this.forEach(function (m) {
       var json = m.json(options)[0];
       var found = parse$3(m) || {};
+      var obj = parse$1(m);
       json.numerator = found.numerator;
       json.denominator = found.denominator;
+      json.number = obj.num;
+      json.cardinal = makeNumber_1(obj, false, false);
+      json.textCardinal = makeNumber_1(obj, true, false);
       res.push(json);
     });
 
@@ -2136,11 +2264,18 @@ for (var i = 0; i < len; i += 1) {
 ordinals = "(".concat(ordinals.join('|'), ")"); // improved tagging for numbers
 
 var tagger = function tagger(doc) {
+  doc.match('a? (#Ordinal|half|quarter|#Fraction)').tag('Fraction', here);
+  doc.match('#Value+ and #Value+ (#Ordinal|half|quarter|#Fraction)').tag('Fraction', here);
+  doc.match('#Value+ (#Ordinal|half|quarter|#Fraction)').tag('Fraction', here);
+  doc.match('#Cardinal+? (second|seconds)').unTag('Fraction', here);
+  doc.match('#Ordinal #Ordinal+').unTag('Fraction');
+  doc.match('#Fraction && #Ordinal').unTag('Ordinal');
+  doc.match('[#Cardinal+? (second|seconds)] of (a|an)', 0).tag('Fraction', here);
   doc.match(multiples).tag('#Multiple', here); //  in the 400s
 
   doc.match('the [/[0-9]+s$/]').tag('#Plural', here); //half a million
 
-  doc.match('half a? #Value').tag('Value', 'half-a-value'); //(quarter not ready)
+  doc.match('half a? #Value?').tag('Value', 'half-a-value'); //(quarter not ready)
   //five and a half
 
   doc.match('#Value and a (half|quarter)').tag('Value', 'value-and-a-half'); //one hundred and seven dollars
@@ -2158,8 +2293,8 @@ var tagger = function tagger(doc) {
   m.group('currency').tag('Currency', here); // fraction - '3 out of 5'
 
   doc.match('#Cardinal+ out of every? #Cardinal').tag('Fraction', here); // fraction - 'a third of a slice'
-
-  m = doc.match("[(#Cardinal|a) ".concat(ordinals, "] of (a|an|the)"), 0).tag('Fraction', here); // tag 'thirds' as a ordinal
+  // m = doc.match(`[(#Cardinal|a) ${ordinals}] of (a|an|the)`, 0).tag('Fraction', here)
+  // tag 'thirds' as a ordinal
 
   m.match('.$').tag('Ordinal', 'plural-ordinal');
 };
@@ -2168,7 +2303,7 @@ var tagger_1 = tagger;
 
 var tags = {
   Fraction: {
-    isA: ['Value', 'NumericValue']
+    isA: ['Value']
   },
   Multiple: {
     isA: 'Value'
@@ -2296,6 +2431,8 @@ var plugin = function plugin(Doc, world) {
     /** return '3 out of 5' or '3/5' etc**/
     fractions: function fractions(n) {
       var m = this.match('#Fraction+');
+      this.match('and #Fraction+').tag('Fraction');
+      this.match('#Fraction+').unTag('Ordinal');
 
       if (typeof n === 'number') {
         m = m.eq(n);
