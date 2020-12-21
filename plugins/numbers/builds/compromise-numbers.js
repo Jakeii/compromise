@@ -444,6 +444,10 @@
 
   var isFractional = function isFractional(term) {
     return term !== 'a' && (!!data.fractions[term] || !!data.fractions[term.slice(0, -1)]);
+  };
+
+  var toPrecisionNumber = function toPrecisionNumber(num) {
+    return Number(num.toPrecision(4));
   }; // a 'section' is something like 'fifty-nine thousand'
   // turn a section into something we can add to - like 59000
 
@@ -458,6 +462,7 @@
 
   var parse = function parse(str, isFraction) {
 
+    // console.log(`parsing: '${str}', depth: ${depth}, isFraction: ${isFraction}`)
     //convert some known-numbers
     if (casualForms.hasOwnProperty(str) === true) {
       return casualForms[str];
@@ -524,13 +529,15 @@
       if (validate(w, has) === false || isFraction && isFractional(w) && terms.length > 1) {
         if (isFraction) {
           sum += section_sum(has);
-          var fractional = parse(terms.slice(i).join(' '), isFraction);
+          var subterms = terms.slice(i); // console.log(subterms)
+
+          var fractional = parse(subterms.join(' '), isFraction);
           var prev = parse(terms[i - 1]);
 
           if (sum === 0 || terms[i - 1] === 'and' || terms[i - 2] === 'and' && terms[i - 1] === 'a') {
             sum += fractional;
           } else if (prev > 19 && prev < 100) {
-            sum = (1 / (sum + 1 / fractional)).toPrecision(4);
+            sum = toPrecisionNumber(1 / toPrecisionNumber(sum + 1 / fractional));
           } else {
             sum *= fractional;
           }
@@ -555,28 +562,21 @@
         //possibly because it's a fraction
 
         if (mult === last_mult) {
-          if (isFraction) {
-            has = {};
-
-            var _fractional = parse(terms.slice(i - 1).join(' '), isFraction);
-
-            sum += _fractional;
-            return sum;
-          } else {
-            return null;
-          }
+          return null;
         } //support 'hundred thousand'
         //this one is tricky..
 
 
         if (mult === 100 && terms[i + 1] !== undefined) {
-          // has['hundreds']=
-          var w2 = terms[i + 1];
+          if (!isFraction || !isFractional(terms[i + 1])) {
+            // has['hundreds']=
+            var w2 = terms[i + 1];
 
-          if (data.multiples[w2]) {
-            mult *= data.multiples[w2]; //hundredThousand/hundredMillion
+            if (data.multiples[w2]) {
+              mult *= data.multiples[w2]; //hundredThousand/hundredMillion
 
-            i += 1;
+              i += 1;
+            }
           }
         } //natural order of things
         //five thousand, one hundred..
@@ -2198,6 +2198,7 @@
         var str = makeNumber_1(obj, false);
         val.replaceWith(str, true);
         val.tag('NumericValue');
+        val.unTag('Fraction');
       });
       return this;
     },
@@ -2221,7 +2222,7 @@
       this.forEach(function (m) {
         var json = m.json(options)[0];
         var found = parse$3(m) || {};
-        var obj = parse$1(m);
+        var obj = parse$1(m, m.has('#Fraction'));
         json.numerator = found.numerator;
         json.denominator = found.denominator;
         json.number = obj.num;
@@ -2251,6 +2252,18 @@
         }
       });
       return this;
+    },
+    get: function get(n) {
+      var arr = [];
+      this.forEach(function (doc) {
+        arr.push(parse$1(doc, doc.has('#Fraction')).num);
+      });
+
+      if (n !== undefined) {
+        return arr[n];
+      }
+
+      return arr;
     }
   };
   var methods_1$1 = methods$2;
